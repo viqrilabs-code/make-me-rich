@@ -1,0 +1,17 @@
+[Unit]
+Description=Make Me Rich personal trading stack
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/make-me-rich
+RemainAfterExit=yes
+Environment=COMPOSE_PROJECT_NAME=make-me-rich
+ExecStart=/usr/bin/docker compose up -d --build
+ExecReload=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

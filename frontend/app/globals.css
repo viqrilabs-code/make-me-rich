@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 44 36% 96%;
+  --foreground: 220 40% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 40% 14%;
+  --primary: 189 88% 32%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 40 42% 91%;
+  --secondary-foreground: 220 35% 20%;
+  --muted: 36 32% 91%;
+  --muted-foreground: 220 16% 42%;
+  --accent: 18 79% 56%;
+  --accent-foreground: 0 0% 100%;
+  --border: 210 22% 84%;
+  --input: 210 22% 84%;
+  --ring: 189 88% 32%;
+  --destructive: 348 83% 47%;
+  --destructive-foreground: 0 0% 100%;
+  --font-display: var(--font-space);
+  --font-body: var(--font-manrope);
+  --font-mono: var(--font-mono-ibm);
+}
+
+.dark {
+  --background: 218 35% 11%;
+  --foreground: 42 33% 94%;
+  --card: 220 29% 15%;
+  --card-foreground: 42 33% 94%;
+  --primary: 182 77% 42%;
+  --primary-foreground: 220 35% 11%;
+  --secondary: 221 24% 20%;
+  --secondary-foreground: 40 25% 92%;
+  --muted: 220 24% 18%;
+  --muted-foreground: 214 16% 70%;
+  --accent: 22 80% 62%;
+  --accent-foreground: 220 35% 11%;
+  --border: 221 18% 24%;
+  --input: 221 18% 24%;
+  --ring: 182 77% 42%;
+  --destructive: 350 85% 61%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background font-body text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top left, rgba(34, 197, 94, 0.08), transparent 24%),
+      radial-gradient(circle at top right, rgba(8, 145, 178, 0.16), transparent 32%),
+      radial-gradient(circle at 75% 85%, rgba(249, 115, 22, 0.1), transparent 24%),
+      linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.05));
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(circle at center, black, transparent 85%);
+    opacity: 0.35;
+  }
+
+  a {
+    @apply text-inherit no-underline;
+  }
+}
+
+.live-wire-border {
+  position: relative;
+  overflow: hidden;
+}
+
+.live-wire-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background:
+    conic-gradient(
+      from 0deg,
+      rgba(45, 212, 191, 0.12),
+      rgba(14, 165, 233, 0.9),
+      rgba(45, 212, 191, 0.18),
+      rgba(56, 189, 248, 0.95),
+      rgba(45, 212, 191, 0.12)
+    );
+  animation: live-wire-spin 3.2s linear infinite;
+}
+
+.live-wire-border::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: inherit;
+  box-shadow: 0 0 48px rgba(14, 165, 233, 0.28);
+  opacity: 0.7;
+  pointer-events: none;
+  animation: live-wire-pulse 2.2s ease-in-out infinite;
+}
+
+.live-wire-shell {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.88));
+  backdrop-filter: blur(18px);
+}
+
+.signal-frame {
+  position: relative;
+  overflow: hidden;
+  --signal-weak: rgba(45, 212, 191, 0.12);
+  --signal-strong: rgba(14, 165, 233, 0.92);
+  --signal-mid: rgba(45, 212, 191, 0.18);
+  --signal-glow: rgba(14, 165, 233, 0.28);
+  --signal-border: rgba(125, 211, 252, 0.18);
+  --signal-wash: rgba(14, 165, 233, 0.18);
+}
+
+.signal-frame::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background:
+    conic-gradient(
+      from 0deg,
+      var(--signal-weak),
+      var(--signal-strong),
+      var(--signal-mid),
+      var(--signal-strong),
+      var(--signal-weak)
+    );
+  animation: live-wire-spin 3.2s linear infinite;
+}
+
+.signal-frame::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: inherit;
+  box-shadow: 0 0 48px var(--signal-glow);
+  opacity: 0.72;
+  pointer-events: none;
+  animation: live-wire-pulse 2.2s ease-in-out infinite;
+}
+
+.signal-frame__shell {
+  position: relative;
+  z-index: 1;
+  border: 1px solid var(--signal-border);
+  background:
+    radial-gradient(circle at top left, var(--signal-wash), transparent 34%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.88));
+  backdrop-filter: blur(18px);
+}
+
+.signal-frame--wait {
+  --signal-weak: rgba(251, 191, 36, 0.12);
+  --signal-strong: rgba(249, 115, 22, 0.95);
+  --signal-mid: rgba(245, 158, 11, 0.2);
+  --signal-glow: rgba(249, 115, 22, 0.32);
+  --signal-border: rgba(251, 191, 36, 0.22);
+  --signal-wash: rgba(249, 115, 22, 0.18);
+}
+
+.signal-frame--buy {
+  --signal-weak: rgba(74, 222, 128, 0.12);
+  --signal-strong: rgba(16, 185, 129, 0.95);
+  --signal-mid: rgba(52, 211, 153, 0.2);
+  --signal-glow: rgba(16, 185, 129, 0.32);
+  --signal-border: rgba(74, 222, 128, 0.22);
+  --signal-wash: rgba(16, 185, 129, 0.18);
+}
+
+.signal-frame--sell {
+  --signal-weak: rgba(251, 113, 133, 0.12);
+  --signal-strong: rgba(244, 63, 94, 0.95);
+  --signal-mid: rgba(251, 113, 133, 0.2);
+  --signal-glow: rgba(244, 63, 94, 0.32);
+  --signal-border: rgba(251, 113, 133, 0.22);
+  --signal-wash: rgba(244, 63, 94, 0.18);
+}
+
+@keyframes live-wire-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes live-wire-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.85;
+  }
+}
