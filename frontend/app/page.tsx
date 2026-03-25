@@ -16,7 +16,9 @@ import { Clock3, RefreshCw, ShieldAlert, Sparkles, WandSparkles, Wallet } from "
 import { AgentStreamPanel } from "@/components/agent-stream-panel";
 import { ChartCard } from "@/components/chart-card";
 import { ChartContainer } from "@/components/chart-container";
+import { DailyTopDealsPanel } from "@/components/daily-top-deals-panel";
 import { ErrorState } from "@/components/error-state";
+import { FeatureLaunchStrip } from "@/components/feature-launch-strip";
 import { FeaturedSignalCard } from "@/components/featured-signal-card";
 import { HotDealsPanel } from "@/components/hot-deals-panel";
 import { LoadingState } from "@/components/loading-state";
@@ -43,6 +45,7 @@ import type {
   AgentCommandResponse,
   AgentStatus,
   BestTradeResponse,
+  DailyTopDealsResponse,
   DailyPerformance,
   NewsSummary,
   OverviewResponse,
@@ -75,11 +78,15 @@ export default function OverviewPage() {
   const [news, setNews] = useState<NewsSummary>(EMPTY_NEWS);
   const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
   const [bestTrade, setBestTrade] = useState<BestTradeResponse | null>(null);
+  const [dailyTopDeals, setDailyTopDeals] = useState<DailyTopDealsResponse | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState("");
+  const [isRefreshingNews, setIsRefreshingNews] = useState(false);
   const [isFetchingBestTrade, setIsFetchingBestTrade] = useState(false);
+  const [isRunningDailyTopDeals, setIsRunningDailyTopDeals] = useState(false);
   const [isAgentSubmitting, setIsAgentSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
+  const [dailyTopDealsError, setDailyTopDealsError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,10 +95,11 @@ export default function OverviewPage() {
       apiFetch<OverviewResponse>("/api/portfolio/overview"),
       apiFetch<DailyPerformance[]>("/api/portfolio/performance"),
       apiFetch<NewsSummary>("/api/news/summary"),
-      apiFetch<SchedulerStatus>("/api/scheduler/status")
+      apiFetch<SchedulerStatus>("/api/scheduler/status"),
+      apiFetch<DailyTopDealsResponse>("/api/market/daily-top-deals")
     ]).then((results) => {
       if (cancelled) return;
-      const [overviewResult, performanceResult, newsResult, schedulerResult] = results;
+      const [overviewResult, performanceResult, newsResult, schedulerResult, dailyTopDealsResult] = results;
 
       if (overviewResult.status === "rejected") {
         setError(overviewResult.reason instanceof Error ? overviewResult.reason.message : "Unable to load overview");
@@ -105,6 +113,7 @@ export default function OverviewPage() {
       if (performanceResult.status === "fulfilled") setPerformance(performanceResult.value);
       if (newsResult.status === "fulfilled") setNews(newsResult.value);
       if (schedulerResult.status === "fulfilled") setScheduler(schedulerResult.value);
+      if (dailyTopDealsResult.status === "fulfilled") setDailyTopDeals(dailyTopDealsResult.value);
     });
 
     return () => {
@@ -185,6 +194,52 @@ export default function OverviewPage() {
     }
   }
 
+  async function refreshNewsManually() {
+    setIsRefreshingNews(true);
+    try {
+      const refreshed = await apiFetch<NewsSummary>("/api/news/refresh", {
+        method: "POST",
+        json: { symbols: overview?.watchlist_symbols ?? [] }
+      });
+      setNews(refreshed);
+    } catch (newsError) {
+      setTradeError(newsError instanceof Error ? newsError.message : "Unable to refresh news right now");
+    } finally {
+      setIsRefreshingNews(false);
+    }
+  }
+
+  async function runDailyTopDealsSweep() {
+    if (!overview?.trade_fetch_ready) {
+      setDailyTopDealsError(
+        `Before running the daily sweep, provide these keys in Strategy -> API keys: ${overview?.missing_trade_credentials.join(" ")}`
+      );
+      return;
+    }
+    setIsRunningDailyTopDeals(true);
+    setDailyTopDealsError(null);
+    try {
+      const response = await apiFetch<DailyTopDealsResponse>("/api/market/daily-top-deals/refresh", {
+        method: "POST",
+      });
+      setDailyTopDeals(response);
+    } catch (loadError) {
+      setDailyTopDealsError(loadError instanceof Error ? loadError.message : "Unable to run today's top 5 sweep");
+      try {
+        const snapshot = await apiFetch<DailyTopDealsResponse>("/api/market/daily-top-deals");
+        setDailyTopDeals(snapshot);
+      } catch {
+        // keep the original error visible if the snapshot refresh also fails
+      }
+    } finally {
+      setIsRunningDailyTopDeals(false);
+    }
+  }
+
+  function scrollToSection(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   const chartData = useMemo(() => {
     if (performance.length) {
       return performance.map((row) => ({
@@ -234,6 +289,44 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-8">
+      <FeatureLaunchStrip
+        title="Core actions"
+        cards={[
+          {
+            title: "Top 5 deals",
+            status: dailyTopDeals?.can_trigger ? "Ready to run today" : "Stored for today",
+            actionLabel: dailyTopDeals?.can_trigger ? "Run top 5 sweep" : "View top 5 board",
+            onClick: () => {
+              if (dailyTopDeals?.can_trigger) {
+                scrollToSection("daily-top-deals");
+                void runDailyTopDealsSweep();
+                return;
+              }
+              scrollToSection("daily-top-deals");
+            },
+            disabled: !overview.trade_fetch_ready,
+            loading: isRunningDailyTopDeals,
+            tone: "amber"
+          },
+          {
+            title: "ReAct agent",
+            status: agentStatus?.active ? "Running now" : "Ready to launch",
+            actionLabel: agentStatus?.active ? "View live agent" : "Open launch pad",
+            onClick: () => {
+              if (agentStatus?.active) {
+                scrollToSection("react-agent");
+                return;
+              }
+              setAgentLauncherOpen(true);
+              scrollToSection("react-agent");
+            },
+            disabled: false,
+            loading: isAgentSubmitting,
+            tone: "teal"
+          }
+        ]}
+      />
+
       <FeaturedSignalCard
         deal={featuredDeal}
         session={overview.market_session}
@@ -245,9 +338,7 @@ export default function OverviewPage() {
           <div className="max-w-3xl">
             <div className="text-xs uppercase tracking-[0.24em] text-primary">Today&apos;s trade finder</div>
             <h2 className="mt-3 font-display text-4xl font-semibold tracking-tight">Pick the clearest trade from your Strategy stocks</h2>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Search only within the comma-separated stocks saved on the Strategy page. The button checks the available instrument lanes for that stock and brings the strongest advisory setup to the top.
-            </p>
+            <p className="mt-3 text-sm text-muted-foreground">Search one tracked stock and pull its strongest setup.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={overview.using_fallback_broker ? "warning" : "success"}>
@@ -397,16 +488,33 @@ export default function OverviewPage() {
         )}
       </section>
 
-      <AgentStreamPanel
-        session={agentStatus?.session ?? null}
-        events={agentEvents}
-        streamingConnected={agentStreamConnected}
-        selectedSymbol={selectedSymbol}
-        onOpenLauncher={() => setAgentLauncherOpen(true)}
-        onStop={() => void handleStopAgent()}
-        disabled={!selectedSymbol}
-        busy={isAgentSubmitting}
-      />
+      <div id="daily-top-deals">
+        <DailyTopDealsPanel
+          data={dailyTopDeals}
+          loading={isRunningDailyTopDeals}
+          error={dailyTopDealsError}
+          onTrigger={() => void runDailyTopDealsSweep()}
+          disabled={!overview.trade_fetch_ready}
+          gateMessage={
+            !overview.trade_fetch_ready
+              ? `Before running the daily sweep, provide these keys in Strategy -> API keys: ${overview.missing_trade_credentials.join(" ")}`
+              : null
+          }
+        />
+      </div>
+
+      <div id="react-agent">
+        <AgentStreamPanel
+          session={agentStatus?.session ?? null}
+          events={agentEvents}
+          streamingConnected={agentStreamConnected}
+          selectedSymbol={selectedSymbol}
+          onOpenLauncher={() => setAgentLauncherOpen(true)}
+          onStop={() => void handleStopAgent()}
+          disabled={!selectedSymbol}
+          busy={isAgentSubmitting}
+        />
+      </div>
 
       {agentLauncherOpen && !(agentStatus?.active) ? (
         <section className="rounded-[32px] border border-primary/20 bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.12),_transparent_40%),linear-gradient(160deg,rgba(15,23,42,0.92),rgba(15,23,42,0.78))] p-6 text-white shadow-[0_24px_90px_rgba(15,23,42,0.22)]">
@@ -765,7 +873,7 @@ export default function OverviewPage() {
         </ChartCard>
 
         <ChartCard title="News pulse" description="Live headlines and sentiment still help rank opportunities, but they never override risk controls.">
-          <NewsPanel summary={news} />
+          <NewsPanel summary={news} onRefresh={() => void refreshNewsManually()} refreshing={isRefreshingNews} />
         </ChartCard>
       </section>
 

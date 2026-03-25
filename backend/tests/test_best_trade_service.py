@@ -24,10 +24,13 @@ def _setup(symbol: str, instrument: str, action: str, confidence: float, executi
     }[instrument]
     return TradeSetupResponse(
         symbol=symbol,
+        trade_name=f"{symbol} {instrument} setup",
         requested_instrument=instrument,  # type: ignore[arg-type]
         chart_interval="15m",
         chart_lookback=96,
         analysis_generated_at=datetime.now(timezone.utc),
+        analysis_engine="llm",
+        selected_broker="indmoney",
         active_broker="indmoney",
         using_fallback_broker=False,
         execution_ready=execution_ready,
@@ -104,6 +107,7 @@ def _setup(symbol: str, instrument: str, action: str, confidence: float, executi
                 slow_ma=98.8,
             )
         ],
+        option_contract=None,
     )
 
 
@@ -120,7 +124,14 @@ def test_build_best_trade_setup_prefers_best_enabled_lane(db_session, monkeypatc
         "future": _setup("INFY", "future", "BUY_FUTURE", 0.64, True),
     }
 
-    def fake_build_trade_setup(db, symbol: str, requested_instrument: str, *, use_llm: bool = True):
+    def fake_build_trade_setup(
+        db,
+        symbol: str,
+        requested_instrument: str,
+        *,
+        use_llm: bool = True,
+        allow_fallback_broker: bool = True,
+    ):
         if use_llm:
             return _setup("INFY", requested_instrument, "BUY_CALL", 0.82, True)
         return setups[requested_instrument]

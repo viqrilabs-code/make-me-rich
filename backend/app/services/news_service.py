@@ -15,11 +15,11 @@ class NewsService:
     def __init__(self) -> None:
         self.marketaux = MarketauxService()
 
-    def get_relevant_news(self, symbols: list[str]) -> list[NewsItemResponse]:
-        return self._normalize_items(self.marketaux.fetch_news(symbols).items, symbols)
+    def get_relevant_news(self, symbols: list[str], force_refresh: bool = False) -> list[NewsItemResponse]:
+        return self._normalize_items(self.marketaux.fetch_news(symbols, force_refresh=force_refresh).items, symbols)
 
-    def summarize(self, symbols: list[str]) -> NewsSummaryResponse:
-        fetch_result = self.marketaux.fetch_news(symbols)
+    def summarize(self, symbols: list[str], force_refresh: bool = False) -> NewsSummaryResponse:
+        fetch_result = self.marketaux.fetch_news(symbols, force_refresh=force_refresh)
         items = self._normalize_items(fetch_result.items, symbols)
         counts = Counter(symbol for item in items for symbol in item.symbols)
         overall = 0.0

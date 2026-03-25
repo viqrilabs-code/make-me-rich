@@ -23,7 +23,7 @@ function computeRiskReward(deal: HotDeal) {
 
 function sourceLabel(source?: string) {
   if (!source) return "Synced portfolio";
-  if (source.startsWith("live:indmoney")) return "Live INDstocks feed";
+  if (source.startsWith("live:indmoney")) return "Live INDstocks feed (legacy)";
   if (source.startsWith("live:groww")) return "Live Groww feed";
   if (source.startsWith("live:")) return "Live broker feed";
   return titleCase(source.replace(":", " "));

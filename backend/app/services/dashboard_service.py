@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from threading import Lock
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,10 +16,79 @@ from app.schemas.portfolio import OverviewResponse, PortfolioSnapshotResponse, P
 from app.services.broker_service import get_active_broker
 from app.services.credential_service import is_trade_fetch_ready, missing_trade_credentials
 from app.services.execution_service import ExecutionService
-from app.services.hot_deals_service import build_hot_deals, build_market_session
+from app.services.hot_deals_service import build_market_session
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class _BrokerPortfolioCacheEntry:
+    selected_broker: str
+    broker_name: str
+    using_fallback: bool
+    broker_account: BrokerAccount | None
+    broker_positions: list[BrokerPosition]
+    fetched_at: datetime
+
+
+_BROKER_PORTFOLIO_CACHE: _BrokerPortfolioCacheEntry | None = None
+_BROKER_PORTFOLIO_CACHE_LOCK = Lock()
+_BROKER_PORTFOLIO_CACHE_TTL = timedelta(seconds=45)
+_BROKER_PORTFOLIO_CACHE_STALE_TTL = timedelta(minutes=5)
+
+
+def _get_broker_cache(
+    selected_broker: str,
+    *,
+    max_age: timedelta,
+) -> _BrokerPortfolioCacheEntry | None:
+    entry = _BROKER_PORTFOLIO_CACHE
+    if entry is None or entry.selected_broker != selected_broker:
+        return None
+    if datetime.now(timezone.utc) - entry.fetched_at > max_age:
+        return None
+    return entry
+
+
+def _set_broker_cache(
+    selected_broker: str,
+    broker_name: str,
+    using_fallback: bool,
+    broker_account: BrokerAccount | None,
+    broker_positions: list[BrokerPosition],
+) -> None:
+    global _BROKER_PORTFOLIO_CACHE
+    _BROKER_PORTFOLIO_CACHE = _BrokerPortfolioCacheEntry(
+        selected_broker=selected_broker,
+        broker_name=broker_name,
+        using_fallback=using_fallback,
+        broker_account=broker_account,
+        broker_positions=list(broker_positions),
+        fetched_at=datetime.now(timezone.utc),
+    )
+
+
+def _cache_result(
+    latest_snapshot: PortfolioSnapshot | None,
+    latest_daily_performance: DailyPerformance | None,
+    cache_entry: _BrokerPortfolioCacheEntry,
+) -> tuple[
+    PortfolioSnapshot | None,
+    DailyPerformance | None,
+    BrokerAccount | None,
+    list[BrokerPosition],
+    str,
+    bool,
+]:
+    return (
+        latest_snapshot,
+        latest_daily_performance,
+        cache_entry.broker_account,
+        list(cache_entry.broker_positions),
+        cache_entry.broker_name,
+        cache_entry.using_fallback,
+    )
 
 
 def _build_snapshot_response(
@@ -127,36 +198,64 @@ def refresh_live_portfolio_cache(
     if not strategy:
         return latest_snapshot, latest_daily_performance, None, [], "mock", False
 
-    adapter, broker_name, using_fallback = get_active_broker(db)
-    if using_fallback and strategy.selected_broker != "mock":
-        return latest_snapshot, latest_daily_performance, None, [], strategy.selected_broker, True
+    selected_broker = strategy.selected_broker
+    cached = _get_broker_cache(selected_broker, max_age=_BROKER_PORTFOLIO_CACHE_TTL)
+    if cached:
+        return _cache_result(latest_snapshot, latest_daily_performance, cached)
 
-    broker_account: BrokerAccount | None = None
-    broker_positions: list[BrokerPosition] = []
+    with _BROKER_PORTFOLIO_CACHE_LOCK:
+        cached = _get_broker_cache(selected_broker, max_age=_BROKER_PORTFOLIO_CACHE_TTL)
+        if cached:
+            return _cache_result(latest_snapshot, latest_daily_performance, cached)
 
-    try:
-        broker_account = adapter.get_account()
-        broker_positions = adapter.get_positions()
+        adapter, broker_name, using_fallback = get_active_broker(db)
+        if using_fallback and selected_broker != "mock":
+            _set_broker_cache(
+                selected_broker=selected_broker,
+                broker_name=selected_broker,
+                using_fallback=True,
+                broker_account=None,
+                broker_positions=[],
+            )
+            return latest_snapshot, latest_daily_performance, None, [], selected_broker, True
+
+        broker_account: BrokerAccount | None = None
+        broker_positions: list[BrokerPosition] = []
+
         try:
-            broker_positions.extend(adapter.get_holdings())
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Live holdings unavailable", extra={"error": str(exc)})
-        broker_positions = _dedupe_broker_positions(broker_positions)
+            broker_account = adapter.get_account()
+            broker_positions = adapter.get_positions()
+            try:
+                broker_positions.extend(adapter.get_holdings())
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Live holdings unavailable", extra={"error": str(exc)})
+            broker_positions = _dedupe_broker_positions(broker_positions)
 
-        if broker_account and _should_refresh_snapshot(latest_snapshot, broker_account):
-            execution = ExecutionService(adapter)
-            latest_snapshot = execution.record_snapshot(
-                db,
-                broker_account,
-                source=f"view:{broker_name}",
+            if broker_account and _should_refresh_snapshot(latest_snapshot, broker_account):
+                execution = ExecutionService(adapter)
+                latest_snapshot = execution.record_snapshot(
+                    db,
+                    broker_account,
+                    source=f"view:{broker_name}",
+                )
+                db.flush()
+                execution.update_daily_performance(db)
+                latest_daily_performance = db.scalar(
+                    select(DailyPerformance).order_by(DailyPerformance.trading_date.desc()).limit(1)
+                )
+
+            _set_broker_cache(
+                selected_broker=selected_broker,
+                broker_name=broker_name,
+                using_fallback=using_fallback,
+                broker_account=broker_account,
+                broker_positions=broker_positions,
             )
-            db.flush()
-            execution.update_daily_performance(db)
-            latest_daily_performance = db.scalar(
-                select(DailyPerformance).order_by(DailyPerformance.trading_date.desc()).limit(1)
-            )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Live broker refresh unavailable", extra={"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Live broker refresh unavailable", extra={"error": str(exc)})
+            stale_cache = _get_broker_cache(selected_broker, max_age=_BROKER_PORTFOLIO_CACHE_STALE_TTL)
+            if stale_cache:
+                return _cache_result(latest_snapshot, latest_daily_performance, stale_cache)
 
     return (
         latest_snapshot,
@@ -248,13 +347,6 @@ def build_overview(db: Session) -> OverviewResponse:
     selected_broker = strategy.selected_broker if strategy else broker_name
     trade_ready = is_trade_fetch_ready(db, selected_broker)
     missing_credentials = missing_trade_credentials(db, selected_broker)
-
-    if strategy and not using_fallback_broker and trade_ready:
-        try:
-            adapter, _, _ = get_active_broker(db)
-            market_session, hot_deals = build_hot_deals(strategy, adapter, watchlist_symbols)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Overview hot deals unavailable", extra={"error": str(exc)})
 
     return OverviewResponse(
         latest_snapshot=snapshot_response,

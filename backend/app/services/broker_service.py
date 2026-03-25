@@ -33,15 +33,20 @@ def get_active_broker(db: Session) -> tuple[BrokerAdapter, str, bool]:
 
 
 def get_broker_health(db: Session) -> BrokerHealth:
-    adapter, selected, using_fallback = get_active_broker(db)
-    health = adapter.healthcheck()
-    health.details.update(
+    strategy = get_strategy_config(db)
+    selected = strategy.selected_broker if strategy else "mock"
+    selected_adapter = get_broker_adapter(selected, SessionLocal)
+    selected_health = selected_adapter.healthcheck()
+    using_fallback = selected != "mock" and not selected_health.healthy
+    active_broker = "mock" if using_fallback else selected
+    selected_health.details.update(
         {
-            "active_broker": selected,
+            "selected_broker": selected,
+            "active_broker": active_broker,
             "using_fallback": using_fallback,
         }
     )
-    return health
+    return selected_health
 
 
 def test_broker_connection(db: Session, broker_name: str | None = None) -> BrokerHealth:
@@ -62,4 +67,3 @@ def test_broker_connection(db: Session, broker_name: str | None = None) -> Broke
         db.commit()
 
     return health
-

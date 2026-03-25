@@ -126,6 +126,9 @@ class MockBrokerAdapter(BrokerAdapter):
             )
         return quotes
 
+    def get_quotes_batch(self, symbols: list[str]) -> dict[str, Quote]:
+        return {quote.symbol: quote for quote in self.get_quotes(symbols)}
+
     def get_candles(self, symbol: str, interval: str, lookback: int) -> list[Candle]:
         try:
             step_minutes = int(interval.rstrip("m"))
@@ -151,6 +154,9 @@ class MockBrokerAdapter(BrokerAdapter):
                 )
             )
         return candles
+
+    def get_candles_batch(self, symbols: list[str], *, interval: str = "5m", lookback: int = 50) -> dict[str, list[Candle]]:
+        return {symbol: self.get_candles(symbol, interval=interval, lookback=lookback) for symbol in symbols}
 
     def place_order(self, order_request: OrderRequest) -> BrokerOrder:
         quote = self.get_quotes([order_request.symbol])[0]
@@ -220,4 +226,3 @@ class MockBrokerAdapter(BrokerAdapter):
             message="Mock broker is ready for advisory and paper trading flows.",
             details={"mode": "simulation"},
         )
-

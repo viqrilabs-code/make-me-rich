@@ -55,12 +55,33 @@ class TradeChartPointResponse(BaseModel):
     slow_ma: float | None = None
 
 
+class OptionContractPlanResponse(BaseModel):
+    contract_name: str
+    contract_symbol: str
+    option_side: str
+    expiry_label: str | None = None
+    strike_price: float | None = None
+    lot_size: int = 1
+    premium_entry: float | None = None
+    premium_stop_loss: float | None = None
+    premium_take_profit: float | None = None
+    probable_profit: float | None = None
+    probable_loss: float | None = None
+    underlying_entry: float | None = None
+    underlying_stop_loss: float | None = None
+    underlying_take_profit: float | None = None
+    pricing_source: str = "synthetic"
+
+
 class TradeSetupResponse(BaseModel):
     symbol: str
+    trade_name: str
     requested_instrument: RequestedInstrument
     chart_interval: str
     chart_lookback: int
     analysis_generated_at: datetime
+    analysis_engine: str
+    selected_broker: str
     active_broker: str
     using_fallback_broker: bool
     execution_ready: bool
@@ -74,6 +95,7 @@ class TradeSetupResponse(BaseModel):
     decision: LLMDecisionResponse
     news_summary: NewsSummaryResponse
     chart_points: list[TradeChartPointResponse]
+    option_contract: OptionContractPlanResponse | None = None
 
 
 class BestTradeInstrumentScoreResponse(BaseModel):
@@ -91,3 +113,29 @@ class BestTradeResponse(BaseModel):
     available_instruments: list[RequestedInstrument]
     evaluated_instruments: list[BestTradeInstrumentScoreResponse]
     setup: TradeSetupResponse
+
+
+class DailyTopDealItemResponse(BaseModel):
+    rank: int
+    instrument: RequestedInstrument
+    ranking_score: float
+    actionable: bool
+    setup: TradeSetupResponse
+
+
+class DailyTopDealsResponse(BaseModel):
+    scan_date: str
+    timezone: str
+    triggered_at: datetime | None = None
+    next_trigger_at: datetime
+    can_trigger: bool
+    universe_label: str = "NSE cash equity universe"
+    universe_size: int = 0
+    deep_scan_size: int = 0
+    scan_scope: list[RequestedInstrument]
+    symbols_scanned: list[str]
+    candidate_count: int
+    actionable_count: int
+    message: str
+    scan_notes: list[str]
+    items: list[DailyTopDealItemResponse]

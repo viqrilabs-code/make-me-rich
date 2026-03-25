@@ -47,6 +47,8 @@ class ConfigUpdate(BaseModel):
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
     selected_broker: str | None = None
     broker_metadata: dict[str, dict] | None = None
+    groww_api_key: str | None = Field(default=None, max_length=4096)
+    groww_api_secret: str | None = Field(default=None, max_length=4096)
     indmoney_api_key: str | None = Field(default=None, max_length=4096)
     llm_api_key: str | None = Field(default=None, max_length=4096)
     anthropic_api_key: str | None = Field(default=None, max_length=4096)

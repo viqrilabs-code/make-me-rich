@@ -65,7 +65,7 @@ export default function SignupPage() {
           <div className="mt-10 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-border p-4">
               <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Broker mode</div>
-              <div className="mt-2 font-display text-2xl">INDstocks / Mock fallback</div>
+              <div className="mt-2 font-display text-2xl">Groww / Mock fallback</div>
             </div>
             <div className="rounded-2xl border border-border p-4">
               <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Safety</div>

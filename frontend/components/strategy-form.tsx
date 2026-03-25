@@ -48,13 +48,15 @@ export function StrategyForm({ config, onSaved }: Props) {
     leverage_enabled: config.strategy?.leverage_enabled ?? false,
     mandatory_stop_loss: config.strategy?.mandatory_stop_loss ?? true,
     live_mode_armed: config.strategy?.live_mode_armed ?? false,
-    selected_broker: config.strategy?.selected_broker ?? "mock",
+    selected_broker: config.strategy?.selected_broker ?? "groww",
     preferred_llm_provider: config.strategy?.preferred_llm_provider ?? "openai",
     watchlist_symbols: (config.strategy?.watchlist_symbols_json ?? ["INFY", "TCS"]).join(", "),
     instrument_types: (config.strategy?.allowed_instruments_json?.instrument_types ?? ["STOCK"]).join(", ")
   });
   const [timezone, setTimezone] = useState(config.user.timezone);
   const [apiKeys, setApiKeys] = useState({
+    groww: "",
+    growwSecret: "",
     indmoney: "",
     openai: "",
     anthropic: "",
@@ -65,6 +67,8 @@ export function StrategyForm({ config, onSaved }: Props) {
   useEffect(() => {
     setTimezone(config.user.timezone);
     setApiKeys({
+      groww: "",
+      growwSecret: "",
       indmoney: "",
       openai: "",
       anthropic: "",
@@ -146,6 +150,8 @@ export function StrategyForm({ config, onSaved }: Props) {
         json: {
           timezone,
           selected_broker: strategyState.selected_broker,
+          groww_api_key: apiKeys.groww || undefined,
+          groww_api_secret: apiKeys.growwSecret || undefined,
           indmoney_api_key: apiKeys.indmoney || undefined,
           llm_api_key: apiKeys.openai || undefined,
           anthropic_api_key: apiKeys.anthropic || undefined,
@@ -375,16 +381,24 @@ export function StrategyForm({ config, onSaved }: Props) {
         <CardContent className="grid gap-6">
           <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
             Before the app fetches any trade idea, it checks for the required keys here. If one is missing, the Market
-            and best-trade flows will stop and send you back to this section. The default provider order is ChatGPT /
-            OpenAI first, Claude second, and Gemini last, and you can also choose a different starting provider above.
+            and best-trade flows will stop and send you back to this section. Groww is the primary live broker path.
+            Marketaux is optional because the board can fall back to technical-only analysis when news is unavailable.
+            The default provider order is ChatGPT / OpenAI first, Claude second, and Gemini last, and you can also
+            choose a different starting provider above.
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
             <ApiKeyField
-              credential={apiCredentialMap.indmoney}
-              value={apiKeys.indmoney}
-              onChange={(value) => setApiKeys((state) => ({ ...state, indmoney: value }))}
-              placeholder="Paste your INDstocks access token"
+              credential={apiCredentialMap.groww}
+              value={apiKeys.groww}
+              onChange={(value) => setApiKeys((state) => ({ ...state, groww: value }))}
+              placeholder="Paste your Groww API key or access token"
+            />
+            <ApiKeyField
+              credential={apiCredentialMap.groww_secret}
+              value={apiKeys.growwSecret}
+              onChange={(value) => setApiKeys((state) => ({ ...state, growwSecret: value }))}
+              placeholder="Paste your Groww API secret"
             />
             <ApiKeyField
               credential={apiCredentialMap.openai}
@@ -410,10 +424,16 @@ export function StrategyForm({ config, onSaved }: Props) {
               onChange={(value) => setApiKeys((state) => ({ ...state, marketaux: value }))}
               placeholder="Paste your Marketaux API key"
             />
+            <ApiKeyField
+              credential={apiCredentialMap.indmoney}
+              value={apiKeys.indmoney}
+              onChange={(value) => setApiKeys((state) => ({ ...state, indmoney: value }))}
+              placeholder="Paste your INDstocks access token only if you still use the legacy broker path"
+            />
           </div>
 
           <div className="rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">
-            Marketaux configured: {String(Boolean(config.secret_status.marketaux_configured))} | OpenAI configured:{" "}
+            Groww configured: {String(Boolean(config.secret_status.groww_configured))} | Marketaux configured: {String(Boolean(config.secret_status.marketaux_configured))} | OpenAI configured:{" "}
             {String(Boolean(config.secret_status.llm_configured))} | Claude fallback configured:{" "}
             {String(Boolean(config.secret_status.anthropic_configured))} | Gemini fallback configured:{" "}
             {String(Boolean(config.secret_status.gemini_configured))} | Live execution env armed:{" "}

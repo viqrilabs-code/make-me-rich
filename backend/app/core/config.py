@@ -102,7 +102,7 @@ class Settings(BaseSettings):
             "anthropic_configured": bool(self.anthropic_api_key),
             "gemini_configured": bool(self.gemini_api_key),
             "llm_fallback_configured": bool(self.anthropic_api_key or self.gemini_api_key),
-            "groww_configured": bool(self.groww_client_id and self.groww_api_key),
+            "groww_configured": bool(self.groww_api_key),
             "indmoney_configured": bool(self.indmoney_api_key),
             "live_execution_enabled": self.live_execution_enabled,
         }

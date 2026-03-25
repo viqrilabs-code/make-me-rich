@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 
-PROMPT_VERSION = "decision-v2"
+PROMPT_VERSION = "decision-v3"
 
 
 def build_decision_prompt(context: dict[str, Any]) -> dict[str, str]:
@@ -13,6 +13,8 @@ def build_decision_prompt(context: dict[str, Any]) -> dict[str, str]:
         "Profit targets are not guaranteed. Optimize for risk-adjusted decision quality, not excitement. "
         "Prioritize capital preservation after drawdown. Only choose from the supplied candidates. "
         "Never invent broker, account, market, or news data. Prefer HOLD if evidence is weak. "
+        "If you return HOLD, be concise and decisive: use direct language such as WAIT, DO NOT ENTER, or STAND ASIDE. "
+        "Do not hedge with words like maybe, might, could, interesting, or consider when action is HOLD. "
         "Return JSON only and exactly match the required schema. "
         "Return one JSON object only, with no markdown fences, no commentary, and no wrapper keys. "
         "Required keys: decision, symbol, instrument_type, action, side, quantity, entry_type, "
@@ -20,7 +22,8 @@ def build_decision_prompt(context: dict[str, Any]) -> dict[str, str]:
         "invalidation_condition, risk_level. "
         "Use one of these actions only: HOLD, EXIT, REDUCE, BUY_STOCK, SELL_STOCK, BUY_CALL, BUY_PUT, BUY_FUTURE, SELL_FUTURE. "
         "rationale_points must be an array of short strings. "
-        "If the best choice is to stay out, return HOLD with quantity 0."
+        "If the best choice is to stay out, return HOLD with quantity 0. "
+        "For HOLD, make the first rationale point an explicit stand-aside instruction."
     )
     user_prompt = json.dumps(context, default=str, separators=(",", ":"), indent=2)
     return {

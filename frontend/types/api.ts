@@ -208,10 +208,13 @@ export type RequestedInstrument = "stock" | "option" | "future";
 
 export type TradeSetup = {
   symbol: string;
+  trade_name: string;
   requested_instrument: RequestedInstrument;
   chart_interval: string;
   chart_lookback: number;
   analysis_generated_at: string;
+  analysis_engine: string;
+  selected_broker: string;
   active_broker: string;
   using_fallback_broker: boolean;
   execution_ready: boolean;
@@ -275,6 +278,23 @@ export type TradeSetup = {
     fast_ma: number | null;
     slow_ma: number | null;
   }>;
+  option_contract: {
+    contract_name: string;
+    contract_symbol: string;
+    option_side: string;
+    expiry_label: string | null;
+    strike_price: number | null;
+    lot_size: number;
+    premium_entry: number | null;
+    premium_stop_loss: number | null;
+    premium_take_profit: number | null;
+    probable_profit: number | null;
+    probable_loss: number | null;
+    underlying_entry: number | null;
+    underlying_stop_loss: number | null;
+    underlying_take_profit: number | null;
+    pricing_source: string;
+  } | null;
 };
 
 export type BestTradeResponse = {
@@ -290,6 +310,30 @@ export type BestTradeResponse = {
     blocker: string | null;
   }>;
   setup: TradeSetup;
+};
+
+export type DailyTopDealsResponse = {
+  scan_date: string;
+  timezone: string;
+  triggered_at: string | null;
+  next_trigger_at: string;
+  can_trigger: boolean;
+  universe_label: string;
+  universe_size: number;
+  deep_scan_size: number;
+  scan_scope: RequestedInstrument[];
+  symbols_scanned: string[];
+  candidate_count: number;
+  actionable_count: number;
+  message: string;
+  scan_notes: string[];
+  items: Array<{
+    rank: number;
+    instrument: RequestedInstrument;
+    ranking_score: number;
+    actionable: boolean;
+    setup: TradeSetup;
+  }>;
 };
 
 export type AuditEntry = {
@@ -339,6 +383,15 @@ export type ConfigResponse = {
     steps: string[];
   }>;
   secret_status: Record<string, boolean>;
+};
+
+export type BrokerHealth = {
+  broker: string;
+  healthy: boolean;
+  message: string;
+  active_broker: string | null;
+  using_fallback: boolean;
+  details: Record<string, unknown>;
 };
 
 export type AgentEvent = {

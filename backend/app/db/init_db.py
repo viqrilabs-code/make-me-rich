@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 def _preferred_broker_name() -> str:
     settings = get_settings()
+    if settings.groww_api_key:
+        return "groww"
     if settings.indmoney_api_key:
         return "indmoney"
-    if settings.groww_client_id and settings.groww_api_key:
-        return "groww"
     return "mock"
 
 
@@ -89,12 +89,14 @@ def seed_defaults(db: Session) -> None:
                 pause_scheduler=False,
             )
         )
+    elif preferred_broker == "groww" and strategy.selected_broker in {"mock", "indmoney"}:
+        strategy.selected_broker = "groww"
     elif strategy.selected_broker == "mock" and preferred_broker != "mock":
         strategy.selected_broker = preferred_broker
 
     configured_flags = {
         "mock": True,
-        "groww": bool(settings.groww_client_id and settings.groww_api_key),
+        "groww": bool(settings.groww_api_key),
         "indmoney": bool(settings.indmoney_api_key),
         "openai": bool(settings.llm_api_key),
         "anthropic": bool(settings.anthropic_api_key),
@@ -104,7 +106,7 @@ def seed_defaults(db: Session) -> None:
     labels = {
         "mock": "Mock Broker",
         "groww": "Groww",
-        "indmoney": "INDstocks",
+        "indmoney": "INDstocks (Legacy)",
         "openai": API_CREDENTIAL_DEFINITIONS["openai"].label,
         "anthropic": API_CREDENTIAL_DEFINITIONS["anthropic"].label,
         "gemini": API_CREDENTIAL_DEFINITIONS["gemini"].label,

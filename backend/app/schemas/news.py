@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class NewsItemResponse(BaseModel):
@@ -23,3 +23,7 @@ class NewsSummaryResponse(BaseModel):
     feed_status: str = "empty"
     technical_only: bool = False
     technical_only_reason: str | None = None
+
+
+class NewsRefreshRequest(BaseModel):
+    symbols: list[str] | None = Field(default=None, max_length=50)

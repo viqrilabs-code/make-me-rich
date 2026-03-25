@@ -27,8 +27,6 @@ def portfolio_performance(
     _: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[DailyPerformanceResponse]:
-    refresh_live_portfolio_cache(db)
-    db.commit()
     rows = db.scalars(
         select(DailyPerformance).order_by(DailyPerformance.trading_date.desc()).limit(limit)
     ).all()

@@ -14,14 +14,13 @@ router = APIRouter(prefix="/api/broker", tags=["broker"])
 
 @router.get("/health", response_model=BrokerHealthResponse)
 def broker_health(_: object = Depends(get_current_user), db: Session = Depends(get_db)) -> BrokerHealthResponse:
-    adapter, selected, using_fallback = get_active_broker(db)
-    health = adapter.healthcheck()
+    health = get_broker_health(db)
     return BrokerHealthResponse(
         broker=health.broker,
         healthy=health.healthy,
         message=health.message,
-        active_broker=selected,
-        using_fallback=using_fallback,
+        active_broker=health.details.get("active_broker"),
+        using_fallback=bool(health.details.get("using_fallback")),
         details=health.details,
     )
 

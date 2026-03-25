@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models import Position, StrategyConfig
-from app.schemas.news import NewsItemResponse, NewsSummaryResponse
+from app.schemas.news import NewsItemResponse, NewsRefreshRequest, NewsSummaryResponse
 from app.services.news_service import NewsService
 
 
@@ -31,3 +31,13 @@ def list_news(_: object = Depends(get_current_user), db: Session = Depends(get_d
 def news_summary(_: object = Depends(get_current_user), db: Session = Depends(get_db)) -> NewsSummaryResponse:
     return NewsService().summarize(_tracked_symbols(db))
 
+
+@router.post("/refresh", response_model=NewsSummaryResponse)
+def refresh_news(
+    payload: NewsRefreshRequest | None = None,
+    _: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> NewsSummaryResponse:
+    symbols = payload.symbols if payload and payload.symbols else _tracked_symbols(db)
+    clean_symbols = sorted({symbol.strip().upper() for symbol in symbols if symbol.strip()})
+    return NewsService().summarize(clean_symbols or _tracked_symbols(db), force_refresh=True)

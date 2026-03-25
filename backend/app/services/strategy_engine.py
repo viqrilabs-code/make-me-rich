@@ -130,37 +130,39 @@ def generate_candidate_actions(
             score=0.1,
         )
     ]
-    bias = features.momentum_score + features.trend_score + news_sentiment * 5
-    defensive_bias = features.volatility_score - features.momentum_score
+    bias = _directional_bias(features, news_sentiment)
+    defensive_bias = abs(min(bias, 0.0)) + max(features.volatility_score - 1.6, 0.0)
+    long_signal = bias
+    short_signal = -bias
 
-    if bias > 3:
+    if long_signal >= 1.35:
         actions.append(
             CandidateAction(
                 symbol=features.symbol,
                 action="BUY_STOCK",
                 instrument_type="STOCK",
                 side="BUY",
-                score=clamp(bias / 10, 0.1, 0.99),
+                score=clamp(0.45 + (long_signal / 6), 0.18, 0.99),
             )
         )
-        if strategy.options_enabled:
+        if strategy.options_enabled and long_signal >= 1.65:
             actions.append(
                 CandidateAction(
                     symbol=features.symbol,
                     action="BUY_CALL",
                     instrument_type="CALL",
                     side="BUY",
-                    score=clamp((bias + features.rsi) / 120, 0.1, 0.95),
+                    score=clamp(0.42 + (long_signal / 6.5), 0.16, 0.95),
                 )
             )
-    if bias < -3:
+    if short_signal >= 1.25:
         actions.append(
             CandidateAction(
                 symbol=features.symbol,
                 action="REDUCE",
                 instrument_type="STOCK",
                 side="SELL",
-                score=clamp(abs(bias) / 10, 0.1, 0.95),
+                score=clamp(0.4 + (short_signal / 6.5), 0.16, 0.95),
             )
         )
         actions.append(
@@ -169,51 +171,76 @@ def generate_candidate_actions(
                 action="EXIT",
                 instrument_type="STOCK",
                 side="SELL",
-                score=clamp((abs(bias) + defensive_bias) / 15, 0.1, 0.99),
+                score=clamp(0.46 + ((short_signal + defensive_bias) / 7.2), 0.18, 0.99),
             )
         )
-        if strategy.options_enabled:
+        if strategy.options_enabled and short_signal >= 1.6:
             actions.append(
                 CandidateAction(
                     symbol=features.symbol,
                     action="BUY_PUT",
                     instrument_type="PUT",
                     side="BUY",
-                    score=clamp(abs(bias) / 9, 0.1, 0.9),
+                    score=clamp(0.42 + (short_signal / 6.2), 0.16, 0.92),
                 )
             )
 
-    if strategy.futures_enabled and bias > 4:
+    if strategy.futures_enabled and long_signal >= 2.0:
         actions.append(
             CandidateAction(
                 symbol=features.symbol,
                 action="BUY_FUTURE",
                 instrument_type="FUTURE",
                 side="BUY",
-                score=clamp((bias + 2) / 12, 0.1, 0.9),
+                score=clamp(0.48 + (long_signal / 6.5), 0.18, 0.94),
             )
         )
 
-    if strategy.futures_enabled and strategy.shorting_enabled and bias < -4:
+    if strategy.futures_enabled and strategy.shorting_enabled and short_signal >= 2.0:
         actions.append(
             CandidateAction(
                 symbol=features.symbol,
                 action="SELL_FUTURE",
                 instrument_type="FUTURE",
                 side="SELL",
-                score=clamp(abs(bias) / 12, 0.1, 0.85),
+                score=clamp(0.48 + (short_signal / 6.5), 0.18, 0.9),
             )
         )
 
-    if strategy.shorting_enabled and bias < -5:
+    if strategy.shorting_enabled and short_signal >= 2.3:
         actions.append(
             CandidateAction(
                 symbol=features.symbol,
                 action="SELL_STOCK",
                 instrument_type="STOCK",
                 side="SELL",
-                score=clamp(abs(bias) / 11, 0.1, 0.85),
+                score=clamp(0.45 + (short_signal / 6.8), 0.18, 0.9),
             )
         )
 
     return sorted(actions, key=lambda item: item.score, reverse=True)
+
+
+def _directional_bias(features: FeatureSet, news_sentiment: float) -> float:
+    bias = (
+        features.momentum_score * 0.55
+        + features.trend_score * 1.35
+        + features.moving_average_crossover * 1.15
+        + ((features.rsi - 50) / 7.0)
+        + ((features.volume_spike_score - 1.0) * 1.25)
+        + (news_sentiment * 2.5)
+    )
+
+    if features.market_regime == "bullish":
+        bias += 0.45
+    elif features.market_regime == "bearish":
+        bias -= 0.45
+    elif features.market_regime == "sideways":
+        bias *= 0.8
+    elif features.market_regime == "volatile":
+        bias *= 0.88
+
+    if features.volatility_score > 2.8:
+        bias *= 0.82
+
+    return round(bias, 3)

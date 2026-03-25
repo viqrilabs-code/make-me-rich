@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -18,6 +19,7 @@ import { Newspaper, PauseCircle, PlayCircle, Radar, RefreshCw, ShieldCheck, Spar
 import { ChartCard } from "@/components/chart-card";
 import { ChartContainer } from "@/components/chart-container";
 import { ErrorState } from "@/components/error-state";
+import { FeatureLaunchStrip } from "@/components/feature-launch-strip";
 import { LoadingState } from "@/components/loading-state";
 import { NewsPanel } from "@/components/news-panel";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +29,8 @@ import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatCurrency, formatDateTime, formatPercent, titleCase } from "@/lib/format";
-import type { ConfigResponse, NewsSummary, RequestedInstrument, StrategyConfig, TradeSetup } from "@/types/api";
+import { useAppStore } from "@/lib/store";
+import type { BrokerHealth, ConfigResponse, NewsSummary, RequestedInstrument, StrategyConfig, TradeSetup } from "@/types/api";
 
 const EMPTY_SUMMARY: NewsSummary = {
   items: [],
@@ -49,13 +52,17 @@ const INSTRUMENT_OPTIONS: Array<{
 ];
 
 export default function MarketPage() {
+  const router = useRouter();
+  const { agentStatus, setAgentLauncherOpen, setSelectedAgentSymbol } = useAppStore();
   const [strategy, setStrategy] = useState<StrategyConfig | null>(null);
   const [marketSummary, setMarketSummary] = useState<NewsSummary>(EMPTY_SUMMARY);
   const [tradeSetup, setTradeSetup] = useState<TradeSetup | null>(null);
+  const [brokerHealth, setBrokerHealth] = useState<BrokerHealth | null>(null);
   const [symbolInput, setSymbolInput] = useState("HDFCBANK");
   const [selectedInstrument, setSelectedInstrument] = useState<RequestedInstrument>("stock");
   const [isBooting, setIsBooting] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshingNews, setIsRefreshingNews] = useState(false);
   const [isSwitchingManualMode, setIsSwitchingManualMode] = useState(false);
   const [tradeGateMessage, setTradeGateMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,10 +73,11 @@ export default function MarketPage() {
     async function boot() {
       setIsBooting(true);
       setError(null);
-      const [strategyResult, newsResult, configResult] = await Promise.allSettled([
+      const [strategyResult, newsResult, configResult, brokerResult] = await Promise.allSettled([
         apiFetch<StrategyConfig>("/api/strategy"),
         apiFetch<NewsSummary>("/api/news/summary"),
-        apiFetch<ConfigResponse>("/api/config")
+        apiFetch<ConfigResponse>("/api/config"),
+        apiFetch<BrokerHealth>("/api/broker/health")
       ]);
 
       if (!active) return;
@@ -89,6 +97,10 @@ export default function MarketPage() {
       }
 
       setSymbolInput(defaultSymbol);
+
+      if (brokerResult?.status === "fulfilled") {
+        setBrokerHealth(brokerResult.value);
+      }
 
       if (configResult.status === "fulfilled" && buildTradeGateMessage(configResult.value)) {
         setIsBooting(false);
@@ -164,10 +176,35 @@ export default function MarketPage() {
       });
       const refreshedStrategy = await apiFetch<StrategyConfig>("/api/strategy");
       setStrategy(refreshedStrategy);
+      const refreshedHealth = await apiFetch<BrokerHealth>("/api/broker/health");
+      setBrokerHealth(refreshedHealth);
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : "Unable to update scheduler mode");
     } finally {
       setIsSwitchingManualMode(false);
+    }
+  }
+
+  async function refreshNewsManually() {
+    const cleanSymbol = symbolInput.trim().toUpperCase();
+    if (!cleanSymbol) {
+      setError("Pick a strategy stock before refreshing news.");
+      return;
+    }
+
+    setIsRefreshingNews(true);
+    setError(null);
+    try {
+      const refreshedSummary = await apiFetch<NewsSummary>("/api/news/refresh", {
+        method: "POST",
+        json: { symbols: [cleanSymbol] }
+      });
+      setMarketSummary(refreshedSummary);
+      await fetchTradeSetup(cleanSymbol, selectedInstrument);
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh news right now");
+    } finally {
+      setIsRefreshingNews(false);
     }
   }
 
@@ -180,26 +217,58 @@ export default function MarketPage() {
   const watchlist = uniqueSymbols(strategy);
   const directive = buildActionDirective(tradeSetup);
   const chartData = buildTechnicalChartData(tradeSetup);
+  const optionPlan = tradeSetup.option_contract;
+  const displayedEntry = optionPlan?.premium_entry ?? tradeSetup.decision.entry_price_hint ?? tradeSetup.quote.ltp;
+  const displayedStop = optionPlan?.premium_stop_loss ?? tradeSetup.decision.stop_loss;
+  const displayedTarget = optionPlan?.premium_take_profit ?? tradeSetup.decision.take_profit;
+  const currentSymbol = symbolInput.trim().toUpperCase() || tradeSetup.symbol;
 
   return (
     <div className="space-y-8">
+      <FeatureLaunchStrip
+        title="Core actions"
+        cards={[
+          {
+            title: "Top 5 deals",
+            status: "Full-NSE sweep board",
+            actionLabel: "Open top 5 board",
+            onClick: () => router.push("/#daily-top-deals"),
+            tone: "amber"
+          },
+          {
+            title: "ReAct agent",
+            status: agentStatus?.active ? "Running now" : "Launch from overview",
+            actionLabel: agentStatus?.active ? "View live agent" : "Open launch pad",
+            onClick: () => {
+              setSelectedAgentSymbol(currentSymbol);
+              setAgentLauncherOpen(true);
+              router.push("/#react-agent");
+            },
+            tone: "teal"
+          }
+        ]}
+      />
+
       <section className="space-y-5">
         <div className="text-xs uppercase tracking-[0.2em] text-primary">Trade finder</div>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
             <h1 className="font-display text-4xl font-semibold tracking-tight">Fetch the next stock, option, or futures idea from live charts and technical context</h1>
-            <p className="mt-3 text-muted-foreground">
-              Pick an instrument lane, enter a stock symbol, and the board will pull recent candles, current quote,
-              and relevant headlines when available before shaping one advisory trade plan. If live news drops out, the board falls back to technical-only analysis instead of fake headlines. Real execution still stays behind hard risk checks.
-            </p>
+            <p className="mt-3 text-sm text-muted-foreground">Pick one tracked stock and pull one clear setup.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant={tradeSetup.execution_ready ? "success" : "warning"}>
               {tradeSetup.execution_ready ? "Execution-ready candidate" : "Research-first setup"}
             </Badge>
             <Badge variant={tradeSetup.using_fallback_broker ? "warning" : "info"}>
-              {tradeSetup.using_fallback_broker ? "Fallback broker active" : `Broker ${tradeSetup.active_broker}`}
+              {tradeSetup.using_fallback_broker
+                ? `Fallback broker active (${tradeSetup.active_broker})`
+                : `Broker ${tradeSetup.active_broker}`}
             </Badge>
+            <Badge variant={tradeSetup.analysis_engine === "llm" ? "success" : "warning"}>
+              {tradeSetup.analysis_engine === "llm" ? "LLM-assisted analysis" : "Fast heuristic analysis"}
+            </Badge>
+            <Badge variant="info">Selected broker {tradeSetup.selected_broker}</Badge>
             <Badge variant={tradeSetup.news_summary.technical_only ? "warning" : "success"}>
               {tradeSetup.news_summary.technical_only ? "Technical-only mode" : "News-assisted mode"}
             </Badge>
@@ -225,7 +294,6 @@ export default function MarketPage() {
                 onClick={() => void fetchTradeSetup(symbolInput, option.id)}
               >
                 <span>{option.label}</span>
-                <span className="text-xs font-normal opacity-80">{option.blurb}</span>
               </Button>
             ))}
               </div>
@@ -236,9 +304,7 @@ export default function MarketPage() {
               <div className="mt-2 text-xl font-semibold">
                 {strategy?.pause_scheduler ? "Manual search only" : "Auto polling enabled"}
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Turn recurring scans off and use only this page for manual trade analysis when you want a quieter workflow.
-              </p>
+              <p className="mt-2 text-sm text-muted-foreground">Pause recurring scans when you want manual-only analysis.</p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Button
                   type="button"
@@ -301,6 +367,26 @@ export default function MarketPage() {
               {tradeGateMessage}
             </div>
           ) : null}
+
+          {brokerHealth && !brokerHealth.healthy ? (
+            <div className="mt-4 rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-200">
+              <div className="font-semibold">
+                {titleCase(brokerHealth.broker)} is unavailable, so manual live trade search is paused.
+              </div>
+              <div className="mt-1">
+                {brokerHealth.message}
+                {typeof brokerHealth.details?.error === "string" ? ` ${brokerHealth.details.error}` : ""}
+              </div>
+              <div className="mt-2 text-rose-100/90">
+                Go to Strategy and refresh the broker token, or switch the broker to mock if you want simulation-only
+                analysis.
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-4 rounded-2xl border border-border/70 bg-background/45 px-4 py-3 text-sm text-muted-foreground">
+            Fetch trade uses the live broker path and stops if live pricing is unavailable.
+          </div>
 
           {watchlist.length ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -379,7 +465,7 @@ export default function MarketPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className={cn("rounded-[24px] border p-4", directive.metricClass)}>
                   <div className={cn("text-xs uppercase tracking-[0.16em]", directive.metricLabelClass)}>Entry</div>
-                  <div className="mt-3 text-2xl font-semibold">{formatCurrency(tradeSetup.decision.entry_price_hint ?? tradeSetup.quote.ltp)}</div>
+                  <div className="mt-3 text-2xl font-semibold">{formatCurrency(displayedEntry)}</div>
                 </div>
                 <div className={cn("rounded-[24px] border p-4", directive.metricClass)}>
                   <div className={cn("text-xs uppercase tracking-[0.16em]", directive.metricLabelClass)}>Confidence</div>
@@ -388,13 +474,13 @@ export default function MarketPage() {
                 <div className={cn("rounded-[24px] border p-4", directive.metricClass)}>
                   <div className={cn("text-xs uppercase tracking-[0.16em]", directive.metricLabelClass)}>Stop loss</div>
                   <div className="mt-3 text-2xl font-semibold">
-                    {tradeSetup.decision.stop_loss != null ? formatCurrency(tradeSetup.decision.stop_loss) : "--"}
+                    {displayedStop != null ? formatCurrency(displayedStop) : "--"}
                   </div>
                 </div>
                 <div className={cn("rounded-[24px] border p-4", directive.metricClass)}>
                   <div className={cn("text-xs uppercase tracking-[0.16em]", directive.metricLabelClass)}>Take profit</div>
                   <div className="mt-3 text-2xl font-semibold">
-                    {tradeSetup.decision.take_profit != null ? formatCurrency(tradeSetup.decision.take_profit) : "--"}
+                    {displayedTarget != null ? formatCurrency(displayedTarget) : "--"}
                   </div>
                 </div>
               </div>
@@ -436,7 +522,7 @@ export default function MarketPage() {
               <div>
                 <div className="text-xs uppercase tracking-[0.22em] text-primary">Detailed breakdown</div>
                 <div className="mt-3 flex flex-wrap items-end gap-4">
-                  <h2 className="font-display text-5xl font-semibold tracking-tight">{tradeSetup.symbol}</h2>
+                  <h2 className="font-display text-5xl font-semibold tracking-tight">{tradeSetup.trade_name}</h2>
                   <div className="pb-1 text-lg text-muted-foreground">
                     {titleCase(tradeSetup.decision.instrument_type)} | {titleCase(tradeSetup.decision.side)}
                   </div>
@@ -445,11 +531,39 @@ export default function MarketPage() {
               </div>
 
               <div className="grid gap-4 md:grid-cols-4">
-                <MetricChip label="Entry" value={formatCurrency(tradeSetup.decision.entry_price_hint ?? tradeSetup.quote.ltp)} />
-                <MetricChip label="Stop loss" value={tradeSetup.decision.stop_loss != null ? formatCurrency(tradeSetup.decision.stop_loss) : "--"} />
-                <MetricChip label="Take profit" value={tradeSetup.decision.take_profit != null ? formatCurrency(tradeSetup.decision.take_profit) : "--"} />
+                <MetricChip label="Entry" value={formatCurrency(displayedEntry)} />
+                <MetricChip label="Stop loss" value={displayedStop != null ? formatCurrency(displayedStop) : "--"} />
+                <MetricChip label="Take profit" value={displayedTarget != null ? formatCurrency(displayedTarget) : "--"} />
                 <MetricChip label="Confidence" value={formatPercent(tradeSetup.decision.confidence * 100)} />
               </div>
+
+              {optionPlan ? (
+                <div className="rounded-3xl border border-border/70 bg-background/60 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Option trade plan</div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Badge variant="success">{optionPlan.option_side}</Badge>
+                    {optionPlan.expiry_label ? <Badge variant="info">{optionPlan.expiry_label}</Badge> : null}
+                    {optionPlan.strike_price != null ? <Badge variant="default">Strike {formatCurrency(optionPlan.strike_price)}</Badge> : null}
+                    <Badge variant="default">Lot size {optionPlan.lot_size}</Badge>
+                  </div>
+                  <div className="mt-4 font-display text-3xl font-semibold tracking-tight">{optionPlan.contract_name}</div>
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Contract symbol {optionPlan.contract_symbol} | Pricing {titleCase(optionPlan.pricing_source.replaceAll("_", " "))}
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-5">
+                    <MetricChip label="Premium entry" value={optionPlan.premium_entry != null ? formatCurrency(optionPlan.premium_entry) : "--"} />
+                    <MetricChip label="Premium stop" value={optionPlan.premium_stop_loss != null ? formatCurrency(optionPlan.premium_stop_loss) : "--"} />
+                    <MetricChip label="Premium exit" value={optionPlan.premium_take_profit != null ? formatCurrency(optionPlan.premium_take_profit) : "--"} />
+                    <MetricChip label="Probable profit" value={optionPlan.probable_profit != null ? formatCurrency(optionPlan.probable_profit) : "--"} />
+                    <MetricChip label="Probable loss" value={optionPlan.probable_loss != null ? formatCurrency(optionPlan.probable_loss) : "--"} />
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-3">
+                    <MetricChip label="Underlying entry" value={optionPlan.underlying_entry != null ? formatCurrency(optionPlan.underlying_entry) : "--"} />
+                    <MetricChip label="Underlying stop" value={optionPlan.underlying_stop_loss != null ? formatCurrency(optionPlan.underlying_stop_loss) : "--"} />
+                    <MetricChip label="Underlying exit" value={optionPlan.underlying_take_profit != null ? formatCurrency(optionPlan.underlying_take_profit) : "--"} />
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-3xl border border-border/70 bg-background/60 p-4">
@@ -739,11 +853,8 @@ export default function MarketPage() {
         <div>
           <div className="text-xs uppercase tracking-[0.18em] text-primary">Broader tape</div>
           <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight">Watchlist-level market context</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Keep the single-symbol setup grounded in the rest of the market instead of reacting to one isolated chart.
-          </p>
         </div>
-        <NewsPanel summary={marketSummary} />
+        <NewsPanel summary={marketSummary} onRefresh={() => void refreshNewsManually()} refreshing={isRefreshingNews} />
       </section>
     </div>
   );
@@ -753,9 +864,19 @@ function buildActionDirective(tradeSetup: TradeSetup) {
   const action = tradeSetup.decision.action;
   const symbol = tradeSetup.symbol;
   const requestedLane = titleCase(tradeSetup.requested_instrument).toLowerCase();
-  const entry = formatCurrency(tradeSetup.decision.entry_price_hint ?? tradeSetup.quote.ltp);
-  const stop = tradeSetup.decision.stop_loss != null ? formatCurrency(tradeSetup.decision.stop_loss) : "not set";
-  const target = tradeSetup.decision.take_profit != null ? formatCurrency(tradeSetup.decision.take_profit) : "not set";
+  const optionPlan = tradeSetup.option_contract;
+  const tradeName = optionPlan?.contract_name ?? tradeSetup.trade_name ?? symbol;
+  const entry = formatCurrency(optionPlan?.premium_entry ?? tradeSetup.decision.entry_price_hint ?? tradeSetup.quote.ltp);
+  const stop = optionPlan?.premium_stop_loss != null
+    ? formatCurrency(optionPlan.premium_stop_loss)
+    : tradeSetup.decision.stop_loss != null
+      ? formatCurrency(tradeSetup.decision.stop_loss)
+      : "not set";
+  const target = optionPlan?.premium_take_profit != null
+    ? formatCurrency(optionPlan.premium_take_profit)
+    : tradeSetup.decision.take_profit != null
+      ? formatCurrency(tradeSetup.decision.take_profit)
+      : "not set";
   const analysisFlavor = tradeSetup.news_summary.technical_only
     ? "This call is being made from price history and technical indicators because live news is unavailable."
     : "This call blends technical structure with live headline context.";
@@ -786,20 +907,20 @@ function buildActionDirective(tradeSetup: TradeSetup) {
   if (action === "HOLD") {
     return {
       theme: "wait",
-      badgeLabel: "Wait",
+      badgeLabel: "WAIT",
       badgeVariant: "warning" as const,
-      title: `Do not take a ${requestedLane} trade in ${symbol} right now.`,
+      title: `WAIT. Do not trade ${symbol} ${requestedLane} right now.`,
       subtitle:
-        `The safest move is to stay out for now. The setup is not strong enough yet, so waiting is the recommended action. ${analysisFlavor}`,
+        `Stand aside. This setup does not clear the entry threshold. ${analysisFlavor}`,
       steps: [
-        `Do not enter a new ${requestedLane} trade in ${symbol} yet.`,
-        "Keep this symbol on your shortlist and check again later for a stronger signal.",
-        "If you want a quieter workflow, leave the scheduler in Manual-only mode and refresh only when you choose."
+        `Do nothing in ${symbol} right now.`,
+        "Keep capital free for a cleaner setup.",
+        "Re-check only after a clean breakout, breakdown, or clear volume expansion."
       ],
-      summaryLabel: "No trade now",
+      summaryLabel: "WAIT",
       summaryText:
-        "This recommendation is about protecting your money, not missing out. Waiting is a valid decision.",
-      whyLine: `Why the app is saying this: ${firstBlocker ?? firstReason}`,
+        "No entry. No chase. Preserve capital until the edge becomes clear.",
+      whyLine: `Stand-aside reason: ${firstBlocker ?? firstReason}`,
       kickerClass: "text-amber-200/90",
       stepClass: "border-amber-300/15 bg-amber-300/6",
       panelClass: "border-amber-300/15 bg-amber-300/6",
@@ -817,11 +938,11 @@ function buildActionDirective(tradeSetup: TradeSetup) {
       subtitle:
         `The analysis sees an opportunity, but your current settings or safeguards still block execution. Treat this as research, not an order. ${analysisFlavor}`,
       steps: [
-        `Watch ${symbol} near ${entry} instead of placing the trade immediately.`,
+        optionPlan ? `Watch ${tradeName} near premium ${entry} instead of placing it immediately.` : `Watch ${symbol} near ${entry} instead of placing the trade immediately.`,
         `If you decide to allow it later, keep the stop near ${stop}.`,
         `If price reaches ${target}, that is the planned profit zone for this idea.`
       ],
-      summaryLabel: titleCase(action),
+      summaryLabel: optionPlan ? tradeName : titleCase(action),
       summaryText: "Potential setup found, but the app is still telling you to hold off on acting.",
       whyLine: `Why the app is holding you back: ${firstBlocker}`
     };
@@ -831,30 +952,32 @@ function buildActionDirective(tradeSetup: TradeSetup) {
     ...directionalTheme,
     badgeLabel: "Action",
     badgeVariant: "success" as const,
-      title: buildActionTitle(action, symbol, requestedLane, entry),
-      subtitle:
+    title: buildActionTitle(action, symbol, requestedLane, entry, tradeName),
+    subtitle:
       `This is the clearest idea on the board right now. The trade is still not guaranteed to work, but this is the action the app wants you to focus on first. ${analysisFlavor}`,
     steps: [
-      `Enter near ${entry}.`,
+      optionPlan ? `Enter ${tradeName} near premium ${entry}.` : `Enter near ${entry}.`,
       `Keep the stop loss near ${stop}.`,
       `Start taking profit near ${target}.`
     ],
-    summaryLabel: titleCase(action),
-    summaryText: `This is the current best move for ${symbol} in the ${requestedLane} lane.`,
+    summaryLabel: optionPlan ? tradeName : titleCase(action),
+    summaryText: optionPlan
+      ? `This is the current best ${optionPlan.option_side.toLowerCase()} expression for ${symbol}.`
+      : `This is the current best move for ${symbol} in the ${requestedLane} lane.`,
     whyLine: `Why the app likes this trade: ${firstReason}`
   };
 }
 
-function buildActionTitle(action: string, symbol: string, requestedLane: string, entry: string) {
+function buildActionTitle(action: string, symbol: string, requestedLane: string, entry: string, tradeName: string) {
   switch (action) {
     case "BUY_STOCK":
       return `Buy ${symbol} stock near ${entry}.`;
     case "SELL_STOCK":
       return `Consider a short stock trade in ${symbol} near ${entry}.`;
     case "BUY_CALL":
-      return `Consider a call option trade on ${symbol} near ${entry}.`;
+      return `Buy ${tradeName} near ${entry}.`;
     case "BUY_PUT":
-      return `Consider a put option trade on ${symbol} near ${entry}.`;
+      return `Buy ${tradeName} near ${entry}.`;
     case "BUY_FUTURE":
       return `Consider a futures buy on ${symbol} near ${entry}.`;
     case "SELL_FUTURE":

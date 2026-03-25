@@ -52,9 +52,7 @@ export function AgentStreamPanel({
           <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight">
             Let the agent work the enabled lanes for {selectedSymbol || session?.symbol || "your chosen stock"}
           </h2>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            The agent observes stock intraday, swing, options, futures, and a forex scout lane, then routes any action back through the same hard risk engine and execution modes already configured in Strategy.
-          </p>
+          <p className="mt-3 text-sm text-muted-foreground">Live stream, live P&L, same hard risk engine.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={active ? "success" : "info"}>{active ? "Agent active" : "Agent idle"}</Badge>
@@ -132,8 +130,8 @@ export function AgentStreamPanel({
               <ShieldCheck className="h-4 w-4" />
               Safety frame
             </div>
-            <div className="mt-3 text-sm leading-6 text-muted-foreground">
-              The target is aspirational, not guaranteed. Every action still passes through hard risk checks, and the normal scheduler is paused while this agent is active to avoid overlapping trade logic.
+            <div className="mt-3 text-sm text-muted-foreground">
+              Target is aspirational. Risk checks still have veto power.
             </div>
           </div>
         </div>
@@ -199,7 +197,7 @@ export function AgentStreamPanel({
               ))
             ) : (
               <div className="rounded-[22px] border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-                The event stream will appear here as soon as the agent starts observing, reasoning, checking risk, and recording any trade actions.
+                The live stream will appear here after the agent starts.
               </div>
             )}
           </div>

@@ -1,18 +1,37 @@
+import { RefreshCw } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTime, titleCase } from "@/lib/format";
 import type { NewsSummary } from "@/types/api";
 
-export function NewsPanel({ summary }: { summary: NewsSummary }) {
+export function NewsPanel({
+  summary,
+  onRefresh,
+  refreshing = false
+}: {
+  summary: NewsSummary;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+}) {
   return (
     <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Relevant Headlines</CardTitle>
-            <Badge variant={summary.technical_only ? "warning" : "info"}>
-              {summary.technical_only ? "Technical-only mode" : "Live news assist"}
-            </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>Relevant Headlines</CardTitle>
+              <Badge variant={summary.technical_only ? "warning" : "info"}>
+                {summary.technical_only ? "Technical-only mode" : "Live news assist"}
+              </Badge>
+            </div>
+            {onRefresh ? (
+              <Button type="button" variant="outline" className="gap-2 rounded-full" onClick={onRefresh} disabled={refreshing}>
+                {refreshing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {refreshing ? "Refreshing news..." : "Refresh news manually"}
+              </Button>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

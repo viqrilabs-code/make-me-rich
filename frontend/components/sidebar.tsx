@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Bot, Gauge, Newspaper, ScrollText, Settings2, ShieldAlert } from "lucide-react";
+import { Activity, Bot, Gauge, Newspaper, ScrollText, Settings2, ShieldAlert, TrendingUp } from "lucide-react";
 
 import { AppLogo } from "@/components/app-logo";
 import { cn } from "@/lib/cn";
@@ -12,7 +12,8 @@ const items = [
   { href: "/strategy", label: "Strategy", icon: Settings2 },
   { href: "/decisions", label: "Decisions", icon: Bot },
   { href: "/orders", label: "Orders", icon: Activity },
-  { href: "/market", label: "Market", icon: Newspaper },
+  { href: "/market", label: "Market", icon: TrendingUp },
+  { href: "/news", label: "News", icon: Newspaper },
   { href: "/audit", label: "Audit", icon: ScrollText },
   { href: "/safety", label: "Safety", icon: ShieldAlert }
 ];

@@ -9,8 +9,8 @@ This software does not guarantee profits, target achievement, or safe live execu
 - Start in `advisory` mode.
 - Move to `paper` mode only after reviewing decisions and risk events.
 - Enable `live` mode only after you have verified broker endpoints, credentials, order semantics, market hours assumptions, and stop-loss behavior for your broker.
-- `INDMoneyAdapter` is wired to the official INDstocks REST API, but complex live-order semantics still need careful verification on your account before real capital is used.
-- `GrowwAdapter` remains a scaffold because public endpoint coverage is still uncertain.
+- `GrowwAdapter` is now the primary live broker path and is wired through Groww's official Python SDK plus public instrument metadata. Start in advisory or paper mode before using it with real capital.
+- `INDMoneyAdapter` remains available as a legacy broker option if you still want to keep the older INDstocks path around.
 
 ## What ships
 
@@ -18,7 +18,9 @@ This software does not guarantee profits, target achievement, or safe live execu
 - SQLite persistence with SQLAlchemy 2.x and Alembic
 - APScheduler polling, monitoring, and end-of-day jobs
 - Mock broker that keeps the app usable with no real broker credentials
+- Groww-first live broker integration with API key or access-token support
 - Market/news service with Marketaux integration plus cached fallback headlines
+- Once-per-day top-5 market sweep across tracked stocks and option lanes
 - Deterministic strategy features and candidate action generation
 - OpenAI-compatible structured LLM decision engine with schema validation and HOLD fallback
 - Hard risk engine with kill switch, cooldown, stale-data checks, position sizing, and duplicate protection
@@ -128,13 +130,20 @@ Copy-Item .env.example .env
 
 - `SECRET_KEY`
 - `FRONTEND_ORIGIN`
+- `GROWW_API_KEY` if you want to use Groww as the live broker with either a ready access token or the API key half of the official key-secret flow
+- `GROWW_API_SECRET` if you are using the official Groww API key + secret flow instead of pasting a ready access token
 - `LLM_API_KEY` if you want live OpenAI decisions instead of heuristic fallback
 - `ANTHROPIC_API_KEY` if you want Claude Sonnet fallback when the primary OpenAI call fails
 - `MARKETAUX_API_KEY` if you want live Marketaux headlines
-- `INDMONEY_API_KEY` if you want to use the official INDstocks access token with the INDMoney broker option
+- `INDMONEY_API_KEY` only if you want to keep using the older INDstocks broker option
 - broker credentials only if you are actively verifying a real adapter
 - leave `BOOTSTRAP_ADMIN_ON_STARTUP=false` if you want the app to start with the signup page
 - set `BOOTSTRAP_ADMIN_ON_STARTUP=true` only if you explicitly want a pre-created env-based admin account
+
+Important for Docker Compose:
+
+- If any secret in `.env` contains a dollar sign, escape each `$` as `$$` before running `docker compose up`.
+- This matters for keys like `GROWW_API_SECRET`, because Compose performs variable interpolation before the value reaches the container.
 
 ## Local development
 
@@ -285,12 +294,12 @@ The sample config at `deploy/nginx/trading-app.conf` routes:
 
 ## Real broker adapter status
 
-`INDMoneyAdapter` is wired to the official `api.indstocks.com` REST endpoints documented by INDstocks.
+`GrowwAdapter` is the primary live broker integration.
 
-- Auth uses `Authorization: <access_token>` with `INDMONEY_API_KEY`.
-- Equity quotes, candles, holdings, positions, order book, and standard market/limit order placement are implemented.
-- The app still falls back to `MockBrokerAdapter` if the chosen broker is unhealthy or unconfigured.
-- `GrowwAdapter` remains intentionally isolated until public endpoint details are verified.
+- Auth supports either a ready Groww access token in `GROWW_API_KEY` or the official API key + secret flow using `GROWW_API_KEY` and `GROWW_API_SECRET`.
+- Holdings, positions, order book, quotes, candles, account margin, and cash-equity order placement are wired through the Groww SDK.
+- Manual market analysis now fails closed instead of silently showing mock prices when the selected live broker is unhealthy.
+- `INDMoneyAdapter` remains available as a legacy broker path through `api.indstocks.com` if you still want to use it.
 
 ## Scheduler design
 
@@ -331,6 +340,8 @@ Main routes:
 - `GET /api/portfolio/performance`
 - `GET /api/portfolio/overview`
 - `GET /api/market/best-trade`
+- `GET /api/market/daily-top-deals`
+- `POST /api/market/daily-top-deals/refresh`
 - `GET /api/news`
 - `GET /api/news/summary`
 - `GET /api/scheduler/status`

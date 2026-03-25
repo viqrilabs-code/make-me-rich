@@ -64,7 +64,7 @@ def get_config_bundle(db: Session) -> ConfigResponse:
             "anthropic_configured": bool(runtime_settings.anthropic_api_key),
             "gemini_configured": bool(runtime_settings.gemini_api_key),
             "llm_fallback_configured": bool(runtime_settings.anthropic_api_key or runtime_settings.gemini_api_key),
-            "groww_configured": bool(runtime_settings.groww_client_id and runtime_settings.groww_api_key),
+            "groww_configured": bool(runtime_settings.groww_api_key),
             "indmoney_configured": bool(runtime_settings.indmoney_api_key),
             "live_execution_enabled": settings.live_execution_enabled,
         },
@@ -93,6 +93,8 @@ def update_config_bundle(db: Session, payload: ConfigUpdate) -> ConfigResponse:
 
     save_api_keys(
         db,
+        groww_api_key=payload.groww_api_key,
+        groww_api_secret=payload.groww_api_secret,
         indmoney_api_key=payload.indmoney_api_key,
         llm_api_key=payload.llm_api_key,
         anthropic_api_key=payload.anthropic_api_key,
@@ -108,6 +110,7 @@ def _sanitize_metadata(metadata: dict | None) -> dict:
     if not metadata:
         return {}
     cleaned = dict(metadata)
-    if "api_key" in cleaned:
-        cleaned["api_key"] = "***"
+    for key in ("api_key", "api_secret"):
+        if key in cleaned:
+            cleaned[key] = "***"
     return cleaned
